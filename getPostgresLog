@@ -1,0 +1,87 @@
+#!/bin/bash
+# ######################################################################################################################
+# Nombre      : getPostgresLog.sh
+# Tipo        : Bash Script
+# Version     : Version 1.0
+# Authors     : Ignacio Silvera <ignacio.silvera@atos.net>
+#             : Luis Steiner    <luis.steiner@atos.net>
+#             :                 <luis.d.steiner@gmail.com>
+# Descripción : Permite extraer el fragmentos de log que no fueron leídos anteriormente, para analizarlos posteriormente
+#	      : con zabbix
+#	      : 
+# To DO	      : Controlar el log rotate
+#	      : 	 
+# ######################################################################################################################
+#CONSTANTES
+##Strings to filter
+STR_FILTER='LOG:||value too long for type character|SELECTDETAIL|SELECTLOG|BINDSTATEMENT|'
+#Path to pg_log
+PG_LOG_PATH="/var/lib/pgsql/9.5/data/pg_log/postgresql-$(date +%Y-%m-%d).log"
+#Line count file path
+LC_PATH="/tmp/line.count"
+#Before Date file path
+BD_PATH="/tmp/fecha_ant_epoch"
+#Temp file Log Path
+LOG_ANALYZER_PATH=/tmp/pglog_analyzer.log
+# Number of start lines to read. It helps to avoid old lines in the first run.
+AVOID_LINES=1
+
+firstRun(){
+#Do some checks on the first run to avoid issues, and initialize files
+
+#Check if before date file exists
+if [ ! -f $BDATE_PATH ];then
+        touch $BDATE_PATH
+        echo $(date +%Y-%m-%d) > $BDATE_PATH
+fi
+
+#Check if line.count file exists
+if [ ! -f $LC_PATH ];then
+        touch $LC_PATH
+        echo $AVOID_LINES > $LC_PATH
+fi
+
+}
+
+
+getLogs(){
+
+	cant_lin_antes=$(/usr/bin/cat $LC_PATH)
+	cant_lin_ahora=$(/usr/bin/wc -l $PG_LOG_PATH | /usr/bin/awk '{print $1}')
+
+	diff=$( /usr/bin/echo $cant_lin_ahora-$cant_lin_antes | /usr/bin/bc )
+	if [ $diff = 0 ];then
+		echo "Nueva" >>/tmp/pglog_analyzer.log
+	else
+		/usr/bin/tail -n $diff $PG_LOG_PATH | /bin/egrep -v "$STR_FILTER" >> $LOG_ANALYZER_PATH
+	fi
+
+	#Guardar cantidad de lineas
+	/usr/bin/echo $cant_lin_ahora > $LC_PATH
+	#Guardar la fecha anterior
+	fecha_ant=$(date +%Y-%m-%d)
+	fecha_ant_epoch=$(date -d $fecha_ant +%s)
+	/usr/bin/echo $fecha_ant_epoch > $BD_PATH
+}
+
+main(){
+
+#Do first time checks
+firstRun
+
+#Comparar fechas
+fecha_actual=$(date +%Y-%m-%d)
+fecha_actual_epoch=$(date -d $fecha_actual +%s)
+fecha_ant_epoch=$(cat $BD_PATH)
+
+if [ $fecha_actual_epoch -gt $fecha_ant_epoch ];then
+	echo 0 > $LC_PATH
+	getLogs
+else
+	getLogs
+fi
+
+}
+
+#Run
+main
