@@ -32,7 +32,7 @@ firstRun(){
 #Check if before date file exists
 if [ ! -f $BD_PATH ];then
         touch $BD_PATH
-        echo $(date +%Y-%m-%d) > $BD_PATH
+        echo $(date +%s) > $BD_PATH
 fi
 
 #Check if line.count file exists
